@@ -5,10 +5,21 @@ from fastapi import FastAPI, UploadFile, File
 
 from app.agents.workflow import build_graph
 
+from contextlib import asynccontextmanager
+
+from app.db.init_db import init_database
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_database()
+    yield
+
 
 app = FastAPI(
     title="Document Intelligence API",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 graph = build_graph()
