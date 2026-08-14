@@ -3,8 +3,27 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.document import Document, DocumentChunk
-from app.services.embedding_service import embed_texts
+from app.models.document import (
+    Document,
+    DocumentChunk,
+)
+
+from app.services.embedding_service import (
+    embed_texts,
+)
+
+
+def get_document_by_hash(
+    db: Session,
+    content_hash: str,
+) -> Document | None:
+
+    return db.scalar(
+        select(Document).where(
+            Document.content_hash
+            == content_hash
+        )
+    )
 
 
 def create_document(
@@ -13,10 +32,9 @@ def create_document(
     content_hash: str,
 ) -> Document:
 
-    existing = db.scalar(
-        select(Document).where(
-            Document.content_hash == content_hash
-        )
+    existing = get_document_by_hash(
+        db,
+        content_hash,
     )
 
     if existing:
@@ -29,7 +47,9 @@ def create_document(
     )
 
     db.add(document)
+
     db.commit()
+
     db.refresh(document)
 
     return document
@@ -40,6 +60,7 @@ def save_chunks(
     document_id: uuid.UUID,
     chunks: list[dict],
 ):
+
     if not chunks:
         return
 
@@ -50,14 +71,25 @@ def save_chunks(
 
     embeddings = embed_texts(texts)
 
-    for index, (chunk, embedding) in enumerate(
-        zip(chunks, embeddings)
+    for index, (
+        chunk,
+        embedding,
+    ) in enumerate(
+        zip(
+            chunks,
+            embeddings,
+        )
     ):
+
         db_chunk = DocumentChunk(
             document_id=document_id,
-            page_number=chunk["page_number"],
+            page_number=chunk[
+                "page_number"
+            ],
             chunk_index=index,
-            content=chunk["content"],
+            content=chunk[
+                "content"
+            ],
             embedding=embedding,
         )
 
