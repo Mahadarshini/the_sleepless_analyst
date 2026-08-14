@@ -2,9 +2,20 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import String, Text, DateTime, ForeignKey
+
+from sqlalchemy import (
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+)
+
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+)
 
 from app.db.database import Base
 
