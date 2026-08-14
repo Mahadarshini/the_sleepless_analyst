@@ -2,14 +2,19 @@ from pydantic import BaseModel, Field
 
 
 class Evidence(BaseModel):
+
     page: int | None = None
 
     quote: str = Field(
-        description="Exact supporting text from the document."
+        description=(
+            "Exact supporting text from "
+            "the document."
+        )
     )
 
 
 class ExtractedFact(BaseModel):
+
     fact_type: str
 
     value: str
@@ -23,4 +28,5 @@ class ExtractedFact(BaseModel):
 
 
 class FactExtractionResult(BaseModel):
+
     facts: list[ExtractedFact]
