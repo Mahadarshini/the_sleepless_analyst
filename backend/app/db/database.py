@@ -1,21 +1,29 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from pydantic_settings import BaseSettings
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     database_url: str
 
-    class Config:
-        env_file = ".env"
+    groq_api_key: str | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
 
 
 settings = Settings()
+
 
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
 )
+
 
 SessionLocal = sessionmaker(
     bind=engine,
