@@ -6,12 +6,12 @@ from langgraph.graph import (
 
 from app.agents.state import AgentState
 
-from app.services.document_parser import (
-    parse_document,
+from app.services.document_pipeline import (
+    process_documents,
 )
 
-from app.services.chunker import (
-    chunk_pages,
+from app.services.classification_service import (
+    classify_document,
 )
 
 from app.services.llm_service import (
@@ -19,54 +19,25 @@ from app.services.llm_service import (
 )
 
 
-def ingest_document(
+def ingest_documents(
     state: AgentState,
 ) -> AgentState:
 
-    pages = parse_document(
-        state["file_path"]
+    documents = process_documents(
+        state["file_paths"]
     )
 
-    chunks = chunk_pages(
-        pages
-    )
+    for document in documents:
 
-    return {
-        **state,
-        "pages": pages,
-        "chunks": chunks,
-    }
-
-
-def classify_document(
-    state: AgentState,
-) -> AgentState:
-
-    filename = state[
-        "filename"
-    ].lower()
-
-    if "invoice" in filename:
-
-        document_type = "invoice"
-
-    elif "amendment" in filename:
-
-        document_type = (
-            "contract_amendment"
+        document["document_type"] = (
+            classify_document(
+                document["filename"]
+            )
         )
 
-    elif "contract" in filename:
-
-        document_type = "contract"
-
-    else:
-
-        document_type = "unknown"
-
     return {
         **state,
-        "document_type": document_type,
+        "documents": documents,
     }
 
 
@@ -74,29 +45,136 @@ def extract_document_facts(
     state: AgentState,
 ) -> AgentState:
 
-    document_text = "\n\n".join(
+    all_facts = []
 
-        f"""
+    for document in state["documents"]:
+
+        document_text = "\n\n".join(
+
+            f"""
 --- PAGE {chunk["page_number"]} ---
 
 {chunk["content"]}
 """
 
-        for chunk in state["chunks"]
-    )
+            for chunk in document["chunks"]
+        )
 
-    result = extract_facts(
-        document_text
-    )
+        result = extract_facts(
+            document_text
+        )
 
-    facts = [
-        fact.model_dump()
-        for fact in result.facts
-    ]
+        for fact in result.facts:
+
+            fact_data = (
+                fact.model_dump()
+            )
+
+            fact_data[
+                "filename"
+            ] = document["filename"]
+
+            fact_data[
+                "document_type"
+            ] = document[
+                "document_type"
+            ]
+
+            all_facts.append(
+                fact_data
+            )
 
     return {
         **state,
-        "extracted_facts": facts,
+        "extracted_facts": all_facts,
+    }
+
+
+def normalize_facts(
+    state: AgentState,
+) -> AgentState:
+
+    normalized = []
+
+    for fact in state[
+        "extracted_facts"
+    ]:
+
+        normalized.append(
+            {
+                "fact_type": (
+                    fact["fact_type"]
+                    .strip()
+                    .lower()
+                ),
+                "value": (
+                    fact["value"]
+                    .strip()
+                ),
+                "confidence": (
+                    fact["confidence"]
+                ),
+                "filename": (
+                    fact["filename"]
+                ),
+                "document_type": (
+                    fact["document_type"]
+                ),
+                "evidence": (
+                    fact["evidence"]
+                ),
+            }
+        )
+
+    return {
+        **state,
+        "normalized_facts": normalized,
+    }
+
+
+def detect_conflicts(
+    state: AgentState,
+) -> AgentState:
+
+    facts = state[
+        "normalized_facts"
+    ]
+
+    conflicts = []
+
+    grouped = {}
+
+    for fact in facts:
+
+        fact_type = fact[
+            "fact_type"
+        ]
+
+        grouped.setdefault(
+            fact_type,
+            []
+        ).append(fact)
+
+    for fact_type, values in grouped.items():
+
+        unique_values = set(
+            fact["value"]
+            for fact in values
+        )
+
+        if len(unique_values) <= 1:
+            continue
+
+        conflicts.append(
+            {
+                "fact_type": fact_type,
+                "values": values,
+            }
+        )
+
+    return {
+        **state,
+        "conflicts": conflicts,
     }
 
 
@@ -110,33 +188,31 @@ def generate_report(
 
         "",
 
-        f"Document: {state['filename']}",
-
-        f"Document Type: "
-        f"{state['document_type']}",
-
-        "",
-
-        "## Extracted Facts",
+        "## Documents",
 
         "",
     ]
 
-    facts = state.get(
-        "extracted_facts",
-        [],
-    )
-
-    if not facts:
+    for document in state[
+        "documents"
+    ]:
 
         lines.append(
-            "No supported facts were extracted."
+            f"- {document['filename']} "
+            f"({document['document_type']})"
         )
 
-    for index, fact in enumerate(
-        facts,
-        start=1,
-    ):
+    lines.extend(
+        [
+            "",
+            "## Extracted Facts",
+            "",
+        ]
+    )
+
+    for fact in state[
+        "normalized_facts"
+    ]:
 
         evidence = fact[
             "evidence"
@@ -144,42 +220,87 @@ def generate_report(
 
         lines.extend(
             [
-
-                f"### {index}. "
-                f"{fact['fact_type']}",
-
+                f"### {fact['fact_type']}",
                 "",
-
                 f"**Value:** "
                 f"{fact['value']}",
-
                 "",
-
+                f"**Source:** "
+                f"{fact['filename']}",
+                "",
                 f"**Confidence:** "
                 f"{fact['confidence']:.2f}",
-
                 "",
-
                 "**Evidence:**",
-
                 f"> {evidence['quote']}",
-
                 "",
-
-                f"**Source page:** "
+                f"**Page:** "
                 f"{evidence['page']}",
-
                 "",
             ]
         )
 
-    report = "\n".join(
-        lines
+    lines.extend(
+        [
+            "## Conflicts",
+            "",
+        ]
     )
+
+    conflicts = state.get(
+        "conflicts",
+        []
+    )
+
+    if not conflicts:
+
+        lines.append(
+            "No conflicts detected."
+        )
+
+    else:
+
+        for index, conflict in enumerate(
+            conflicts,
+            start=1,
+        ):
+
+            lines.extend(
+                [
+                    f"### Conflict {index}",
+                    "",
+                    f"**Fact:** "
+                    f"{conflict['fact_type']}",
+                    "",
+                ]
+            )
+
+            for value in conflict[
+                "values"
+            ]:
+
+                evidence = value[
+                    "evidence"
+                ]
+
+                lines.extend(
+                    [
+                        f"**Value:** "
+                        f"{value['value']}",
+
+                        f"**Source:** "
+                        f"{value['filename']}",
+
+                        f"**Evidence:** "
+                        f"> {evidence['quote']}",
+
+                        "",
+                    ]
+                )
 
     return {
         **state,
-        "report": report,
+        "report": "\n".join(lines),
     }
 
 
@@ -191,17 +312,22 @@ def build_graph():
 
     graph.add_node(
         "ingest",
-        ingest_document,
-    )
-
-    graph.add_node(
-        "classify",
-        classify_document,
+        ingest_documents,
     )
 
     graph.add_node(
         "extract",
         extract_document_facts,
+    )
+
+    graph.add_node(
+        "normalize",
+        normalize_facts,
+    )
+
+    graph.add_node(
+        "detect_conflicts",
+        detect_conflicts,
     )
 
     graph.add_node(
@@ -216,16 +342,21 @@ def build_graph():
 
     graph.add_edge(
         "ingest",
-        "classify",
-    )
-
-    graph.add_edge(
-        "classify",
         "extract",
     )
 
     graph.add_edge(
         "extract",
+        "normalize",
+    )
+
+    graph.add_edge(
+        "normalize",
+        "detect_conflicts",
+    )
+
+    graph.add_edge(
+        "detect_conflicts",
         "report",
     )
 
