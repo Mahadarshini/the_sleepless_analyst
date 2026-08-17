@@ -3,7 +3,7 @@ uvicorn[standard]
 
 langgraph
 langchain-core
-langchain-openai
+langchain-groq
 
 sqlalchemy
 psycopg[binary]
@@ -14,7 +14,6 @@ pydantic-settings
 
 pypdf
 python-docx
-
 python-multipart
 
 sentence-transformers
