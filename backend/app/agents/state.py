@@ -2,18 +2,22 @@ from typing import TypedDict
 
 
 class AgentState(TypedDict, total=False):
+
     run_id: str
 
-    document_id: str
-    file_path: str
-    filename: str
+    document_ids: list[str]
 
-    document_type: str
+    file_paths: list[str]
 
-    pages: list
-    chunks: list
+    filenames: list[str]
 
-    extracted_facts: list
+    documents: list[dict]
+
+    extracted_facts: list[dict]
+
+    normalized_facts: list[dict]
+
+    conflicts: list[dict]
 
     report: str
 
