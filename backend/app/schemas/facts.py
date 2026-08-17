@@ -5,12 +5,7 @@ class Evidence(BaseModel):
 
     page: int | None = None
 
-    quote: str = Field(
-        description=(
-            "Exact supporting text from "
-            "the document."
-        )
-    )
+    quote: str
 
 
 class ExtractedFact(BaseModel):
